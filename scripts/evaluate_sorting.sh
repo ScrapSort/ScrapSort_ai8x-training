@@ -1,0 +1,2 @@
+#!/bin/sh
+./train.py --model simplesortingnet --dataset sorting --confusion --evaluate --exp-load-weights-from /home/geffen/Documents/ScrapSort/ai8x-synthesis/trained/simplesort4_qat-q.pth.tar -8 --device MAX78000 "$@"

@@ -969,6 +969,8 @@ def _validate(data_loader, model, criterion, loggers, args, epoch=-1, tflogger=N
 
     # Switch to evaluation mode
     model.eval()
+    #data_loader.dataset.visualize_batch(model)
+    #exit()
 
     end = time.time()
     class_probs = []
