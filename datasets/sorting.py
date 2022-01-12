@@ -37,7 +37,7 @@ import pandas as pd
 import os
 
 import ai8x
-from models.sortingnet import SortingClassifier128
+#from models.sortingnet import SortingClassifier128
 
 
 '''
@@ -167,7 +167,7 @@ class SortingDataset(Dataset):
 def sorting_get_datasets(data, load_train=True, load_test=True):
     (data_dir, args) = data
     
-    img_dir_path = "/home/geffen/Desktop/sorting_imgs/sorting_imgs3"
+    img_dir_path = "/home/geffen/Desktop/sorting_imgs/sorting_imgs4"
 
     if load_train:
         train_transform = transforms.Compose([
