@@ -11,6 +11,8 @@ import torch.nn as nn
 import ai8x
 import numpy as np
 import torch
+import distiller.apputils as apputils
+from train import update_old_model_params
 
 # class SortingClassifier128(nn.Module):
 #     def __init__(self, num_classes=5, num_channels=3, dimensions=(128, 128), bias=True, **kwargs):
@@ -259,6 +261,58 @@ def simplesortingnetbn(pretrained=False, **kwargs):
     return SimpleSortingClassifierBN128(**kwargs)
 
 
+'''
+adds bb to simplesortingnetbn
+'''
+class SimpleSortingClassifierBNBB128(nn.Module):
+    def __init__(self, num_classes=5, num_channels=3, dimensions=(128, 128), bias=False, **kwargs):
+        super().__init__()
+        
+        self.feature_extractor = SimpleSortingClassifierBN128(**kwargs)
+        update_old_model_params("/home/geffen/Documents/ScrapSort/src/ai8x-training/logs/2022.01.25-163818/best.pth.tar", self.feature_extractor)
+        model, compression_scheduler, optimizer, start_epoch = apputils.load_checkpoint(self.feature_extractor, "/home/geffen/Documents/ScrapSort/src/ai8x-training/logs/2022.01.25-163818/best.pth.tar")
+        ai8x.update_model(model)
+        self.feature_extractor = model
+        
+        # freeze the weights
+        for param in self.feature_extractor.parameters():
+            param.requires_grad = False
+            
+        # retrain the last layer to detect a bounding box
+        self.feature_extractor.fc1 = ai8x.Linear(64*4*4, 4, bias=False, wide=True, **kwargs)
+            
+        # add a fully connected layer for bounding box detection after the conv10
+        for m in self.modules():
+            if isinstance(m, nn.Linear):
+                nn.init.xavier_uniform(m.weight)
+                
+    def forward(self, x):  # pylint: disable=arguments-differ
+        """Forward prop"""
+        x = self.feature_extractor.conv1(x)
+        x = self.feature_extractor.conv2(x)
+        x = self.feature_extractor.conv3(x)
+        x = self.feature_extractor.conv4(x)
+        x = self.feature_extractor.conv5(x)
+        x = self.feature_extractor.conv6(x)
+        x = self.feature_extractor.conv7(x)
+        x = self.feature_extractor.conv8(x)
+        x = self.feature_extractor.conv9(x)
+        x = self.feature_extractor.conv10(x)
+        x = x.view(x.size(0), -1)
+        
+        # output layers
+        x1 = self.feature_extractor.fc1(x) # only output a bb for now
+
+        return x1
+
+
+def simplesortingnetbnbb(pretrained=False, **kwargs):
+    """
+    Constructs a sorting model.
+    """
+    assert not pretrained
+    return SimpleSortingClassifierBNBB128(**kwargs)
+
 models = [
     # {
     #     'name': 'sortingnet',
@@ -272,6 +326,11 @@ models = [
     },
     {
         'name': 'simplesortingnetbn',
+        'min_input': 1,
+        'dim': 2,
+    },
+    {
+        'name': 'simplesortingnetbnbb',
         'min_input': 1,
         'dim': 2,
     }
