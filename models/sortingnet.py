@@ -267,19 +267,22 @@ adds bb to simplesortingnetbn
 class SimpleSortingClassifierBNBB128(nn.Module):
     def __init__(self, num_classes=5, num_channels=3, dimensions=(128, 128), bias=False, **kwargs):
         super().__init__()
+        pretrained_path = "/home/geffen/Documents/ScrapSort/src/ai8x-synthesis/trained/simplesort5_qat.pth.tar"
         
         self.feature_extractor = SimpleSortingClassifierBN128(**kwargs)
-        update_old_model_params("/home/geffen/Documents/ScrapSort/src/ai8x-training/logs/2022.01.25-163818/best.pth.tar", self.feature_extractor)
-        model, compression_scheduler, optimizer, start_epoch = apputils.load_checkpoint(self.feature_extractor, "/home/geffen/Documents/ScrapSort/src/ai8x-training/logs/2022.01.25-163818/best.pth.tar")
+        update_old_model_params(pretrained_path, self.feature_extractor)
+        ai8x.fuse_bn_layers(self.feature_extractor)
+        
+        model = apputils.load_lean_checkpoint(self.feature_extractor, pretrained_path)
         ai8x.update_model(model)
         self.feature_extractor = model
         
         # freeze the weights
-        for param in self.feature_extractor.parameters():
-            param.requires_grad = False
+        # for param in self.feature_extractor.parameters():
+        #     param.requires_grad = False
             
-        # retrain the last layer to detect a bounding box
-        self.feature_extractor.fc1 = ai8x.Linear(64*4*4, 4, bias=False, wide=True, **kwargs)
+        # retrain the last layer to detect a bounding box and classes
+        self.feature_extractor.fc1 = ai8x.Linear(64*4*4, 10, bias=False, wide=True, **kwargs)
             
         # add a fully connected layer for bounding box detection after the conv10
         for m in self.modules():
@@ -301,7 +304,7 @@ class SimpleSortingClassifierBNBB128(nn.Module):
         x = x.view(x.size(0), -1)
         
         # output layers
-        x1 = self.feature_extractor.fc1(x) # only output a bb for now
+        x1 = self.feature_extractor.fc1(x)
 
         return x1
 

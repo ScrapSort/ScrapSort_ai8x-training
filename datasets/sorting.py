@@ -280,17 +280,18 @@ class SortingDatasetBB(Dataset):
             # get the label
             label = self.labels[idx]
             
-            # get the bb
+            # if class is 'none' then bb doesn't matter
             if label == 5:
-                return img, torch.tensor([0,0,0,0]).float()
+                return img, label,torch.tensor([0.01,0.01,0.01,0.01]).float()
             
             df = pd.read_csv(os.path.dirname(self.img_dir_path) + "/" + list(self.classes)[label]+".csv")
             row = df.loc[df['filename'] == file_name]
             bb = [row['x'].item(),row['y'].item(),row['w'].item(),row['h'].item()]
             bb = torch.tensor(bb).float()
             
-            # return the sample (img (tensor)), object class (int)
-            return img, bb
+            # return the sample (img (tensor)), object class (int),bb coordinates
+            return img, label, bb
+        
         except (ValueError, RuntimeWarning,UserWarning) as e:
             print("Exception: ", e)
             print("Bad Image: ", self.imgs[idx])
@@ -302,9 +303,19 @@ class SortingDatasetBB(Dataset):
         matplotlib.use('TkAgg')
         batch_size = 64
         data_loader = DataLoader(self,batch_size,shuffle=True)
+        
         # get the first batch
-        (imgs, bbs) = next(iter(data_loader))
+        (imgs, labels, bbs) = next(iter(data_loader))
+        (imgs, labels, bbs) = next(iter(data_loader))
+        #(imgs, labels, bbs) = next(iter(data_loader))
+        #(imgs, labels, bbs) = next(iter(data_loader))
+        
+        # batch output
         predictions = model(imgs)
+        none_idxs = (labels == 5).nonzero()
+        bbs[none_idxs] = 1.
+        div = (predictions[:,6:10].detach()/bbs)
+        #print(div.mean(dim=0))
         
         # display the batch in a grid with the img, label, idx
         rows = 8
@@ -313,19 +324,36 @@ class SortingDatasetBB(Dataset):
         
         fig,ax_array = plt.subplots(rows,cols,figsize=(20,20))
         fig.subplots_adjust(hspace=0.5)
-        print(predictions)
+        #print(predictions)
         for i in range(rows):
             for j in range(cols):
                 idx = i*rows+j
-                text = "P: "#,obj_classes[preds[idx].argmax()]#", i=" +str(idxs[idx].item())
                 
+                # get a row in the batch --> [c0, c1, c2, c3, c4, c5, x, y, w, h]
                 preds = predictions[idx].detach()
+                class_pred = preds[0:6]
+                bb_preds = preds[6:10]
+                # bb_preds[0] = preds[6]#/23000
+                # bb_preds[1] = preds[7]#/23000
+                # bb_preds[2] = preds[8]#/25000
+                # bb_preds[3] = preds[9]#/25000
+                bb_preds[0] = preds[6]/31000
+                bb_preds[1] = preds[7]/29000
+                bb_preds[2] = preds[8]/32000
+                bb_preds[3] = preds[9]/31000
                 
-                ax_array[i,j].imshow(imgs[idx].permute(1, 2, 0))
-                rect_gt = patches.Rectangle((bbs[idx][0],bbs[idx][1]),bbs[idx][2],bbs[idx][3], edgecolor='r', facecolor="none")
-                rect_pd = patches.Rectangle((preds[0].item(),preds[1].item()),preds[2].item(),preds[3].item(), edgecolor='g', facecolor="none")
-                ax_array[i,j].add_patch(rect_gt)
-                ax_array[i,j].add_patch(rect_pd)
+                
+                text = "P:" + str(obj_classes[class_pred.argmax().item()]) + "  GT:" + str(obj_classes[labels[idx]])
+                
+                
+                ax_array[i,j].imshow((imgs[idx].permute(1, 2, 0)+128)/255)
+                #print(imgs[idx].permute(1, 2, 0))
+                #ax_array[i,j].imshow((imgs[idx].permute(1, 2, 0)+1)/2)
+                rect_gt = patches.Rectangle((bbs[idx][0],bbs[idx][1]),bbs[idx][2],bbs[idx][3], edgecolor='r', facecolor="none",lw=1.5)
+                rect_pd = patches.Rectangle((bb_preds[0].item(),bb_preds[1].item()),bb_preds[2].item(),bb_preds[3].item(), edgecolor='g', facecolor="none",lw=1.5)
+                if labels[idx] < 5:
+                    ax_array[i,j].add_patch(rect_gt)
+                    ax_array[i,j].add_patch(rect_pd)
                 ax_array[i,j].title.set_text(text)
                 ax_array[i,j].set_xticks([])
                 ax_array[i,j].set_yticks([])
@@ -343,7 +371,7 @@ def sorting_get_datasetsbb(data, load_train=True, load_test=True):
             transforms.ToPILImage(),
             transforms.ColorJitter(brightness=(0.85,1.15)),#,saturation=(0.5,1),contrast=(0.7,1.1)),
             transforms.RandomGrayscale(0.10),
-            transforms.RandomAffine(degrees=5,translate=(0.05,0.05)),
+            #transforms.RandomAffine(degrees=5,translate=(0.05,0.05)),
             transforms.ToTensor(),
             ai8x.normalize(args=args)
         ])
