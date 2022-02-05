@@ -307,7 +307,7 @@ class SortingDatasetBB(Dataset):
         # get the first batch
         (imgs, labels, bbs) = next(iter(data_loader))
         (imgs, labels, bbs) = next(iter(data_loader))
-        #(imgs, labels, bbs) = next(iter(data_loader))
+        (imgs, labels, bbs) = next(iter(data_loader))
         #(imgs, labels, bbs) = next(iter(data_loader))
         
         # batch output
@@ -337,10 +337,10 @@ class SortingDatasetBB(Dataset):
                 # bb_preds[1] = preds[7]#/23000
                 # bb_preds[2] = preds[8]#/25000
                 # bb_preds[3] = preds[9]#/25000
-                bb_preds[0] = preds[6]/31000
-                bb_preds[1] = preds[7]/29000
-                bb_preds[2] = preds[8]/32000
-                bb_preds[3] = preds[9]/31000
+                bb_preds[0] = preds[6]/30720
+                bb_preds[1] = preds[7]/30464
+                bb_preds[2] = preds[8]/33792
+                bb_preds[3] = preds[9]/31360
                 
                 
                 text = "P:" + str(obj_classes[class_pred.argmax().item()]) + "  GT:" + str(obj_classes[labels[idx]])

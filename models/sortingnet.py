@@ -277,7 +277,13 @@ class SimpleSortingClassifierBNBB128(nn.Module):
         ai8x.update_model(model)
         self.feature_extractor = model
         
-        # freeze the weights
+        # freeze the weights except for last conv and fc
+        ct = 0
+        for child in self.feature_extractor.children():
+            ct += 1
+            if ct < 10:
+                for param in child.parameters():
+                    param.requires_grad = False
         # for param in self.feature_extractor.parameters():
         #     param.requires_grad = False
             

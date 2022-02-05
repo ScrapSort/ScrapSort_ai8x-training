@@ -71,6 +71,7 @@ import traceback
 from collections import OrderedDict
 from functools import partial
 from pydoc import locate
+from cv2 import reduce
 
 import numpy as np
 
@@ -133,11 +134,21 @@ weight_mean = None
 
 
 
-def iou(outputs, class_labels, bb_label):
+def iou(outputs, class_labels, bb_label,quant_eval=False):
     #print("labels: ", bb_label.data[0], " pred: ", outputs.data[0][6:10])
     #print(labels.size())
     class_pred = outputs[:,0:6]
     bb_pred = outputs[:,6:10]
+    
+    
+    #div = (bb_pred[(class_labels != 5).nonzero()] / (bb_label[(class_labels != 5).nonzero()]+1))
+    #print(div.mean(dim=0))
+    
+    if quant_eval:
+        bb_pred[:,0] /= 240
+        bb_pred[:,1] /= 238
+        bb_pred[:,2] /= 264
+        bb_pred[:,3] /= 245
     
     # get the tlc coordinates and brc coordinates
     x_tlc_out = bb_pred[:,0].data
@@ -177,16 +188,23 @@ def iou(outputs, class_labels, bb_label):
     # print("D:",D[0:3])
     # exit()
     
-    
-    #print(iou.mean())
+    if quant_eval:
+        print(iou[(class_labels != 5).nonzero()].mean())
+    #print(bb_pred[(class_labels != 5).nonzero()][0:5,:])
+    #print(bb_label[(class_labels != 5).nonzero()][0:5,:])
     l1 = nn.L1Loss()
+    l1s = nn.SmoothL1Loss(reduction='none')
     ce = nn.CrossEntropyLoss()
     
     none_class_idxs = (class_labels == 5).nonzero()
     
-    bb_l = 1-iou + D + l1(bb_pred,bb_label)
+    #bb_l = 1-iou + D + l1(bb_pred,bb_label)
+    bb_l = l1s(bb_pred,bb_label)
     bb_l[none_class_idxs] = 0.0
     cl_l =  ce(class_pred,class_labels)
+    # print(bb_l.mean())
+    # print(cl_l)
+    # exit()
     
     return bb_l.mean() + 5*cl_l
 
@@ -1041,8 +1059,8 @@ def _validate(data_loader, model, criterion, loggers, args, epoch=-1, tflogger=N
 
     # Switch to evaluation mode
     model.eval()
-    data_loader.dataset.visualize_batch(model)
-    exit()
+    #data_loader.dataset.visualize_batch(model)
+    #exit()
 
     end = time.time()
     class_probs = []
@@ -1053,7 +1071,7 @@ def _validate(data_loader, model, criterion, loggers, args, epoch=-1, tflogger=N
             # compute output from model
             output = model(inputs)
             
-            loss = iou(output,target,bb)
+            #loss = iou(output,target,bb,quant_eval=True)
             
             # target = torch.cat((bb,target.resize(target.size(0),1)),dim=1)
             # c,_ = torch.max(output[:,0:6],dim=1)
@@ -1085,7 +1103,7 @@ def _validate(data_loader, model, criterion, loggers, args, epoch=-1, tflogger=N
                 # compute loss
                 #loss = criterion(output, target)
                 
-                loss = iou(output,target,bb)
+                loss = iou(output,target,bb,quant_eval=True)
                 # target = torch.cat((bb,target.resize(target.size(0),1)),dim=1)
                 # c,_ = torch.max(output[:,0:6],dim=1)
                 # c = c.resize(c.size(0),1)
