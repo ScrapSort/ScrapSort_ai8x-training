@@ -267,7 +267,7 @@ adds bb to simplesortingnetbn
 class SimpleSortingClassifierBNBB128(nn.Module):
     def __init__(self, num_classes=5, num_channels=3, dimensions=(128, 128), bias=False, **kwargs):
         super().__init__()
-        pretrained_path = "/home/geffen/Documents/ScrapSort/src/ai8x-synthesis/trained/simplesort5_qat.pth.tar"
+        pretrained_path = "/home/geffen/Documents/ScrapSort/src/ai8x-synthesis/trained/simplesort8_qat.pth.tar"
         
         self.feature_extractor = SimpleSortingClassifierBN128(**kwargs)
         update_old_model_params(pretrained_path, self.feature_extractor)

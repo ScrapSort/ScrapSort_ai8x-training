@@ -144,6 +144,7 @@ class SortingDataset(Dataset):
         data_loader = DataLoader(self,batch_size,shuffle=True)
         # get the first batch
         (imgs, labels) = next(iter(data_loader))
+        (imgs, labels) = next(iter(data_loader))
         preds = model(imgs)
         
         # display the batch in a grid with the img, label, idx
@@ -157,7 +158,8 @@ class SortingDataset(Dataset):
             for j in range(cols):
                 idx = i*rows+j
                 text = str(labels[idx].item()) + ":" + obj_classes[labels[idx]]  + "P: ",obj_classes[preds[idx].argmax()]#", i=" +str(idxs[idx].item())
-                ax_array[i,j].imshow(imgs[idx].permute(1, 2, 0))
+                #ax_array[i,j].imshow(imgs[idx].permute(1, 2, 0))
+                ax_array[i,j].imshow((imgs[idx].permute(1, 2, 0)+128)/255)
                 ax_array[i,j].title.set_text(text)
                 ax_array[i,j].set_xticks([])
                 ax_array[i,j].set_yticks([])
@@ -168,14 +170,17 @@ class SortingDataset(Dataset):
 def sorting_get_datasets(data, load_train=True, load_test=True):
     (data_dir, args) = data
     
-    img_dir_path = "/home/geffen/Desktop/sorting_imgs/sorting_imgs4"
+    #img_dir_path = "/home/geffen/Desktop/sorting_dataset/sorting_imgs/"
+    img_dir_path = "/home/geffen/Desktop/latest_sorting_imgs/sorting_imgs"
 
     if load_train:
         train_transform = transforms.Compose([
             transforms.ToPILImage(),
-            transforms.ColorJitter(brightness=(0.85,1.15)),#,saturation=(0.5,1),contrast=(0.7,1.1)),
-            transforms.RandomGrayscale(0.10),
-            transforms.RandomAffine(degrees=5,translate=(0.05,0.05)),
+            transforms.ColorJitter(brightness=(0.95,1.05)),#,saturation=(0.5,1),contrast=(0.7,1.1)),
+            #transforms.RandomGrayscale(0.05),
+            transforms.RandomAffine(degrees=0,translate=(0.05,0.05)),
+            transforms.RandomHorizontalFlip(),
+            transforms.RandomVerticalFlip(),
             transforms.ToTensor(),
             ai8x.normalize(args=args)
         ])
@@ -369,8 +374,8 @@ def sorting_get_datasetsbb(data, load_train=True, load_test=True):
     if load_train:
         train_transform = transforms.Compose([
             transforms.ToPILImage(),
-            transforms.ColorJitter(brightness=(0.85,1.15)),#,saturation=(0.5,1),contrast=(0.7,1.1)),
-            transforms.RandomGrayscale(0.10),
+            #transforms.ColorJitter(brightness=(0.90,1.10)),#,saturation=(0.5,1),contrast=(0.7,1.1)),
+            #transforms.RandomGrayscale(0.05),
             #transforms.RandomAffine(degrees=5,translate=(0.05,0.05)),
             transforms.ToTensor(),
             ai8x.normalize(args=args)
@@ -400,7 +405,7 @@ datasets = [
     {
         'name': 'sorting',
         'input': (3, 128, 128),
-        'output': ('cup','hex','Trap','can','bottle','none'),
+        'output': ('cup','trap','hex','can', 'bottle','none'),
         'loader': sorting_get_datasets,
     },
     {

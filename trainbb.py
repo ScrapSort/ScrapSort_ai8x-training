@@ -144,11 +144,11 @@ def iou(outputs, class_labels, bb_label,quant_eval=False):
     #div = (bb_pred[(class_labels != 5).nonzero()] / (bb_label[(class_labels != 5).nonzero()]+1))
     #print(div.mean(dim=0))
     
-    if quant_eval:
-        bb_pred[:,0] /= 240
-        bb_pred[:,1] /= 238
-        bb_pred[:,2] /= 264
-        bb_pred[:,3] /= 245
+    # if quant_eval:
+    #     bb_pred[:,0] /= 240
+    #     bb_pred[:,1] /= 238
+    #     bb_pred[:,2] /= 264
+    #     bb_pred[:,3] /= 245
     
     # get the tlc coordinates and brc coordinates
     x_tlc_out = bb_pred[:,0].data
@@ -206,7 +206,7 @@ def iou(outputs, class_labels, bb_label,quant_eval=False):
     # print(cl_l)
     # exit()
     
-    return bb_l.mean() + 5*cl_l
+    return bb_l.mean() + D.mean() + 5*cl_l
 
 
 def main():
@@ -1059,8 +1059,8 @@ def _validate(data_loader, model, criterion, loggers, args, epoch=-1, tflogger=N
 
     # Switch to evaluation mode
     model.eval()
-    #data_loader.dataset.visualize_batch(model)
-    #exit()
+    data_loader.dataset.visualize_batch(model)
+    exit()
 
     end = time.time()
     class_probs = []
