@@ -1,0 +1,2 @@
+#!/bin/sh
+./trainemb.py --model simplesortingnetemb --dataset sorting --evaluate --exp-load-weights-from /home/geffen_cooper/ScrapSort/ScrapSort_ai8x-training/logs/2022.03.27-184332/qat_best.pth.tar --device MAX78000 "$@"

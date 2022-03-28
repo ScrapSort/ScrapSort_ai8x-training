@@ -40,6 +40,14 @@ import os
 import ai8x
 #from models.sortingnet import SortingClassifier128
 
+import matplotlib.pyplot as plt
+import numpy as np
+import torch
+from matplotlib import cm
+from sklearn.decomposition import PCA
+from sklearn.manifold import TSNE
+from torch.utils.data import DataLoader
+
 
 '''
 Sorting Dataset Class
@@ -164,6 +172,31 @@ class SortingDataset(Dataset):
                 ax_array[i,j].set_xticks([])
                 ax_array[i,j].set_yticks([])
         plt.show()
+
+    def viz_emb(self, model,device):
+        output_emb = torch.zeros((0,64))
+        labels = []
+        data_loader = DataLoader(self,128,shuffle=True)
+        for validation_step, (inputs, target) in enumerate(data_loader):
+            with torch.no_grad():
+                inputs, target = inputs.to(device), target.to(device)
+                # compute output from model
+                output = model(inputs)
+                output_emb = torch.cat((output_emb, output.detach().cpu()), 0)
+                labels.extend(target.detach().cpu().tolist())
+
+        out_emb = np.array(output_emb)
+        tsne = TSNE(2, verbose=1)
+        tsne_proj = tsne.fit_transform(output_emb)
+        # Plot those points as a scatter plot and label them based on the pred labels
+        cmap = cm.get_cmap('tab20')
+        fig, ax = plt.subplots(figsize=(8,8))
+        num_categories = 7
+        for lab in range(num_categories):
+            indices = labels==lab
+            ax.scatter(tsne_proj[indices,0],tsne_proj[indices,1], c=np.array(cmap(lab)).reshape(1,4), label = lab ,alpha=0.5)
+        ax.legend(fontsize='large', markerscale=2)
+        plt.savefig("viz.pdf")
         
         
 '''Function to get the datasets'''
