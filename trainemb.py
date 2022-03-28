@@ -71,7 +71,7 @@ import traceback
 from collections import OrderedDict
 from functools import partial
 from pydoc import locate
-from cv2 import reduce
+from black import out
 
 import numpy as np
 
@@ -87,19 +87,18 @@ except (ModuleNotFoundError, AttributeError):
     pass
 
 import torch
-import torch.backends.cudnn as cudnn
-import torch.nn as nn
 import torch.nn.parallel
 import torch.optim
 import torch.utils.data
+from torch import nn
+from torch.backends import cudnn
 
 # pylint: disable=wrong-import-order
 import distiller
-import distiller.apputils as apputils
-import distiller.model_summaries as model_summaries
 import examples.auto_compression.amc as adc
 import shap
 import torchnet.meter as tnt
+from distiller import apputils, model_summaries
 from distiller.data_loggers import PythonLogger, TensorBoardLogger
 # pylint: disable=no-name-in-module
 from distiller.data_loggers.collector import (QuantCalibrationStatsCollector,
@@ -133,80 +132,60 @@ weight_stddev = None
 weight_mean = None
 
 
+def triplet_loss(outputs, class_labels):
+    
+    #print("\noutput\n\n",outputs[0],"\n=================================\n\n")
+    #print(class_labels)
+    
+    # get the embedddings for each class
+    c0 = outputs[class_labels == 0]
+    c1 = outputs[class_labels == 1]
+    c2 = outputs[class_labels == 2]
+    c3 = outputs[class_labels == 3]
+    c4 = outputs[class_labels == 4]
+    c5 = outputs[class_labels == 5]
+    c6 = outputs[class_labels == 6]
 
-def iou(outputs, class_labels, bb_label,quant_eval=False):
-    #print("labels: ", bb_label.data[0], " pred: ", outputs.data[0][6:10])
-    #print(labels.size())
-    class_pred = outputs[:,0:6]
-    bb_pred = outputs[:,6:10]
+    # put into a list
+    embeddings = [c0,c1,c2,c3,c4,c5,c6]
+    #print("\nemb\n\n",embeddings[0],"\n=================\n\n")
     
-    
-    #div = (bb_pred[(class_labels != 5).nonzero()] / (bb_label[(class_labels != 5).nonzero()]+1))
-    #print(div.mean(dim=0))
-    
-    # if quant_eval:
-    #     bb_pred[:,0] /= 240
-    #     bb_pred[:,1] /= 238
-    #     bb_pred[:,2] /= 264
-    #     bb_pred[:,3] /= 245
-    
-    # get the tlc coordinates and brc coordinates
-    x_tlc_out = bb_pred[:,0].data
-    y_tlc_out = bb_pred[:,1].data
-    x_tlc_gt = bb_label[:,0].data
-    y_tlc_gt = bb_label[:,1].data
-    
-    x_brc_out = bb_pred[:,0].data + bb_pred[:,2]
-    y_brc_out = bb_pred[:,1].data + bb_pred[:,3]
-    x_brc_gt = bb_label[:,0].data + bb_label[:,2]
-    y_brc_gt = bb_label[:,1].data + bb_label[:,3]
-    
-    # find the max
-    x_tlc = torch.max(x_tlc_out, x_tlc_gt)
-    y_tlc = torch.max(y_tlc_out, y_tlc_gt)
-    x_brc = torch.min(x_brc_out, x_brc_gt)
-    y_brc = torch.min(y_brc_out, y_brc_gt)
-    
-    inter_area = torch.max(torch.zeros_like(x_brc), x_brc-x_tlc + 1)*torch.max(torch.zeros_like(y_brc), y_brc-y_tlc + 1)+0.0000001
-    out_area = (x_brc_out-x_tlc_out+1)*(y_brc_out-y_tlc_out+1)
-    label_area = (x_brc_gt-x_tlc_gt+1)*(y_brc_gt-y_tlc_gt+1)
-    iou = inter_area / (label_area+out_area-inter_area)
-    
-    center_pred_x = (x_brc_out + x_tlc_out)/2
-    center_pred_y = (y_brc_out + y_tlc_out)/2
-    center_gt_x = (x_brc_gt + x_tlc_gt)/2
-    center_gt_y = (y_brc_gt + y_tlc_gt)/2
-    d_s = (center_pred_y-center_gt_y)**2 + (center_pred_x-center_gt_x)**2
-    c_s = (y_tlc_out-y_tlc_gt)**2 + (x_tlc_out-x_tlc_gt)**2
-    D = d_s/c_s
-    
-    # print("pred:",outputs[0:3,6:10])
-    # print("gt:",bb_label[0:3,:])
-    # print("iou:",iou[0:3])
-    # print("d_s:",d_s[0:3])
-    # print("c_s:",c_s[0:3])
-    # print("D:",D[0:3])
-    # exit()
-    
-    if quant_eval:
-        print(iou[(class_labels != 5).nonzero()].mean())
-    #print(bb_pred[(class_labels != 5).nonzero()][0:5,:])
-    #print(bb_label[(class_labels != 5).nonzero()][0:5,:])
-    l1 = nn.L1Loss()
-    l1s = nn.SmoothL1Loss(reduction='none')
-    ce = nn.CrossEntropyLoss()
-    
-    none_class_idxs = (class_labels == 5).nonzero()
-    
-    #bb_l = 1-iou + D + l1(bb_pred,bb_label)
-    bb_l = l1s(bb_pred,bb_label)
-    bb_l[none_class_idxs] = 0.0
-    cl_l =  ce(class_pred,class_labels)
-    # print(bb_l.mean())
-    # print(cl_l)
-    # exit()
-    
-    return bb_l.mean() + D.mean() + 5*cl_l
+    # generate the triplets
+    num_triplets = 256
+
+    # triplet tensors for this batch
+    anchors = torch.zeros((num_triplets,1,64))
+    positives = torch.zeros((num_triplets,1,64))
+    negatives = torch.zeros((num_triplets,1,64))
+
+    # fill the tensors
+    #print("gen trips")
+    for i in range(num_triplets):
+        # randomly get the class for the anchor/positive sample
+        ap_class_idx = torch.randint(0,7,(1,)).item()
+
+        # randomly get the class for the negative sample, make sure it is different
+        n_class_idx = torch.randint(0,7,(1,)).item() 
+        while n_class_idx == ap_class_idx:
+            n_class_idx = torch.randint(0,7,(1,)).item() 
+
+        # get the idx of the sample 
+        anchor_idx = torch.randint(0,len(embeddings[ap_class_idx]),(1,)).item() 
+        anchors[i] = embeddings[ap_class_idx][anchor_idx]
+
+        positive_idx = torch.randint(0,len(embeddings[ap_class_idx]),(1,)).item() 
+        # while positive_idx == anchor_idx:
+        #     positive_idx = torch.randint(0,len(embeddings[ap_class_idx]),(1,)).item() 
+        positives[i] = embeddings[ap_class_idx][positive_idx]
+
+        negative_idx = torch.randint(0,len(embeddings[n_class_idx]),(1,)).item() 
+        negatives[i] = embeddings[n_class_idx][negative_idx]
+        
+    #print(anchors,positives,negatives)
+    TL = torch.nn.TripletMarginLoss(margin=1,p=2)
+    l = TL(anchors,positives,negatives)
+    #print("loss\n",l)
+    return l
 
 
 def main():
@@ -315,13 +294,12 @@ def main():
             available_gpus = torch.cuda.device_count()
             for dev_id in args.gpus:
                 if dev_id >= available_gpus:
-                    raise ValueError('ERROR: GPU device ID {0} requested, but only {1} '
-                                     'devices available'
-                                     .format(dev_id, available_gpus))
+                    raise ValueError(f'ERROR: GPU device ID {dev_id} requested, but only '
+                                     f'{available_gpus} devices available')
             # Set default device in case the first one on the list != 0
             torch.cuda.set_device(args.gpus[0])
 
-    if args.earlyexit_thresholds: # not executed by default
+    if args.earlyexit_thresholds:
         args.num_exits = len(args.earlyexit_thresholds) + 1
         args.loss_exits = [0] * args.num_exits
         args.losses_exits = []
@@ -397,8 +375,10 @@ def main():
         if qat_policy is not None:
             checkpoint = torch.load(args.resumed_checkpoint_path,
                                     map_location=lambda storage, loc: storage)
+            # pylint: disable=unsubscriptable-object
             if checkpoint.get('epoch', None) >= qat_policy['start_epoch']:
                 ai8x.fuse_bn_layers(model)
+            # pylint: enable=unsubscriptable-object
         model, compression_scheduler, optimizer, start_epoch = apputils.load_checkpoint(
             model, args.resumed_checkpoint_path, model_device=args.device)
         ai8x.update_model(model)
@@ -407,8 +387,10 @@ def main():
         if qat_policy is not None:
             checkpoint = torch.load(args.load_model_path,
                                     map_location=lambda storage, loc: storage)
+            # pylint: disable=unsubscriptable-object
             if checkpoint.get('epoch', None) >= qat_policy['start_epoch']:
                 ai8x.fuse_bn_layers(model)
+            # pylint: enable=unsubscriptable-object
         model = apputils.load_lean_checkpoint(model, args.load_model_path,
                                               model_device=args.device)
         ai8x.update_model(model)
@@ -453,8 +435,7 @@ def main():
 
     if args.qe_calibration:
         msglogger.info('Quantization calibration stats collection enabled:')
-        msglogger.info('\tStats will be collected for {:.1%} '
-                       'of test dataset'.format(args.qe_calibration))
+        msglogger.info('\tStats will be collected for %.1f%% of test dataset', args.qe_calibration)
         msglogger.info('\tSetting constant seeds and converting model to serialized execution')
         distiller.set_deterministic()
         model = distiller.make_non_parallel_copy(model)
@@ -500,8 +481,8 @@ def main():
                                  args.dataset, optimizer=None)
         apputils.save_checkpoint(0, args.cnn, model, optimizer=None,
                                  scheduler=compression_scheduler,
-                                 name="{}_thinned".format(args.resumed_checkpoint_path.
-                                                          replace(".pth.tar", "")),
+                                 name=f'{args.resumed_checkpoint_path.replace(".pth.tar", "")}'
+                                      '_thinned',
                                  dir=msglogger.logdir)
         print("Note: your model may have collapsed to random inference, "
               "so you may want to fine-tune")
@@ -522,8 +503,8 @@ def main():
         msglogger.info('\tTeacher Model: %s', args.kd_teacher)
         msglogger.info('\tTemperature: %s', args.kd_temp)
         msglogger.info('\tLoss Weights (distillation | student | teacher): %s',
-                       ' | '.join(['{:.2f}'.format(val) for val in dlw]))
-        msglogger.info('\tStarting from Epoch: %s', args.kd_start_epoch)
+                       ' | '.join([f'{val:.2f}' for val in dlw]))
+        msglogger.info('\tStarting from Epoch: %d', args.kd_start_epoch)
 
     if start_epoch >= ending_epoch:
         msglogger.error('epoch count is too low, starting epoch is %d but total epochs set '
@@ -535,7 +516,10 @@ def main():
                                         'OnceForAllModel interface for NAS training!'
         if nas_policy:
             args.nas_stage_transition_list = create_nas_training_stage_list(model, nas_policy)
-            args.nas_kd_params = nas_policy['kd_params'] if 'kd_params' in nas_policy else None
+            # pylint: disable=unsubscriptable-object
+            args.nas_kd_params = nas_policy['kd_params'] \
+                if nas_policy and 'kd_params' in nas_policy else None
+            # pylint: enable=unsubscriptable-object
             if args.nas_kd_resume_from == '':
                 args.nas_kd_policy = None
             else:
@@ -549,6 +533,7 @@ def main():
 
     vloss = 10**6
     for epoch in range(start_epoch, ending_epoch):
+        # pylint: disable=unsubscriptable-object
         if qat_policy is not None and epoch > 0 and epoch == qat_policy['start_epoch']:
             # Fuse the BN parameters into conv layers before Quantization Aware Training (QAT)
             ai8x.fuse_bn_layers(model)
@@ -565,6 +550,7 @@ def main():
                 args.name = f'{args.name}_qat'
             else:
                 args.name = 'qat'
+        # pylint: enable=unsubscriptable-object
 
         # This is the main training loop.
         msglogger.info('\n')
@@ -582,9 +568,11 @@ def main():
                 msglogger.info(distiller.masks_sparsity_tbl_summary(model, compression_scheduler))
 
         # evaluate on validation set
+        # pylint: disable=unsubscriptable-object
         run_validation = not args.nas or (args.nas and (epoch < nas_policy['start_epoch']))
         run_nas_validation = args.nas and (epoch >= nas_policy['start_epoch']) and \
             ((epoch+1) % nas_policy['validation_freq'] == 0)
+        # pylint: enable=unsubscriptable-object
 
         if run_validation or run_nas_validation:
             checkpoint_name = args.name
@@ -611,7 +599,7 @@ def main():
                     stats[1]['Top5'] = top5
             else:
                 stats = ('Performance/Validation/', OrderedDict([('Loss', vloss), ('MSE', top1)]))
-            
+
             distiller.log_training_progress(stats, None, epoch, steps_completed=0, total_steps=1,
                                             log_freq=1, loggers=all_tbloggers)
 
@@ -718,8 +706,8 @@ def create_nas_kd_policy(model, compression_scheduler, epoch, next_state_start_e
     msglogger.info('\nStudent-Teacher knowledge distillation enabled for NAS:')
     msglogger.info('\tStart Epoch: %d, End Epoch: %d', epoch, next_state_start_epoch)
     msglogger.info('\tTemperature: %s', args.nas_kd_params['temperature'])
-    msglogger.info('\tLoss Weights (distillation | student | teacher): %s',
-                   ' | '.join(['{:.2f}'.format(val) for val in dlw]))
+    msglogger.info("\tLoss Weights (distillation | student | teacher): %s",
+                   ' | '.join([f'{val:.2f}' for val in dlw]))
 
 
 def train(train_loader, model, criterion, optimizer, epoch,
@@ -731,7 +719,7 @@ def train(train_loader, model, criterion, optimizer, epoch,
     if not args.regression:
         classerr = tnt.ClassErrorMeter(accuracy=True, topk=(1, min(args.num_classes, 5)))
     else:
-        #classerr = tnt.MSEMeter()
+         #classerr = tnt.MSEMeter()
         classerr = tnt.AverageValueMeter()
     batch_time = tnt.AverageValueMeter()
     data_time = tnt.AverageValueMeter()
@@ -776,10 +764,10 @@ def train(train_loader, model, criterion, optimizer, epoch,
     model.train()
     acc_stats = []
     end = time.time()
-    for train_step, (inputs, target, bb) in enumerate(train_loader):
+    for train_step, (inputs, target) in enumerate(train_loader):
         # Measure data loading time
         data_time.add(time.time() - end)
-        inputs, target, bb = inputs.to(args.device), target.to(args.device), bb.to(args.device)
+        inputs, target = inputs.to(args.device), target.to(args.device)
 
         # Set nas parameters if necessary
         if args.nas:
@@ -804,17 +792,10 @@ def train(train_loader, model, criterion, optimizer, epoch,
 
         if not args.earlyexit_lossweights:
             #loss = criterion(output, target)
-            loss = iou(output,target,bb)
-            
-            # target = torch.cat((bb,target.resize(target.size(0),1)),dim=1)
-            # c,_ = torch.max(output[:,0:6],dim=1)
-            # c = c.resize(c.size(0),1)
-            # output = torch.cat((output[:,6:10],c),dim=1)
-            
+            loss = triplet_loss(output, target)
             # Measure accuracy if the conditions are set. For `Last Batch` only accuracy
             # calculateion last two batches are used as the last batch might include just a few
             # samples.
-            
             if args.show_train_accuracy == 'full' or \
                (args.show_train_accuracy == 'last_batch' and train_step >= len(train_loader)-2):
                 if len(output.data.shape) <= 2:
@@ -904,7 +885,6 @@ def train(train_loader, model, criterion, optimizer, epoch,
             stats_dict = OrderedDict()
             for loss_name, meter in losses.items():
                 stats_dict[loss_name] = meter.mean
-           
             stats_dict.update(errs)
             if args.nas:
                 stats_dict['NAS-Stage'] = stage
@@ -955,11 +935,11 @@ def test(test_loader, model, criterion, loggers, activations_collectors, args):
             with torch.no_grad():
                 global weight_min, weight_max, weight_count  # pylint: disable=global-statement
                 global weight_sum, weight_stddev, weight_mean  # pylint: disable=global-statement
-                weight_min = torch.tensor(float('inf'))  # pylint: disable=not-callable
-                weight_max = torch.tensor(float('-inf'))  # pylint: disable=not-callable
-                weight_count = torch.tensor(0, dtype=torch.int)  # pylint: disable=not-callable
-                weight_sum = torch.tensor(0.0)  # pylint: disable=not-callable
-                weight_stddev = torch.tensor(0.0)  # pylint: disable=not-callable
+                weight_min = torch.Tensor(float('inf'))
+                weight_max = torch.Tensor(float('-inf'))
+                weight_count = torch.Tensor(0, dtype=torch.int)
+                weight_sum = torch.Tensor(0.0)
+                weight_stddev = torch.Tensor(0.0)
 
                 def traverse_pass1(m):
                     """
@@ -982,7 +962,7 @@ def test(test_loader, model, criterion, loggers, activations_collectors, args):
                     """
                     Traverse model to build weight stats
                     """
-                    global weight_stddev, weight_mean  # pylint: disable=global-statement
+                    global weight_stddev  # pylint: disable=global-statement
                     if isinstance(m, nn.Conv2d):
                         weight_stddev += ((m.weight.flatten() - weight_mean) ** 2).sum()
                         if hasattr(m, 'bias') and m.bias is not None:
@@ -1006,6 +986,7 @@ def test(test_loader, model, criterion, loggers, activations_collectors, args):
 def _validate(data_loader, model, criterion, loggers, args, epoch=-1, tflogger=None):
     """Execute the validation/test loop."""
     losses = {'objective_loss': tnt.AverageValueMeter()}
+    print(losses)
     if not args.regression:
         classerr = tnt.ClassErrorMeter(accuracy=True, topk=(1, min(args.num_classes, 5)))
     else:
@@ -1027,11 +1008,11 @@ def _validate(data_loader, model, criterion, loggers, args, epoch=-1, tflogger=N
                     f.write(f'{args.labels[i.int()]}\n')
 
     if args.csv_prefix is not None:
-        with open(f'{args.csv_prefix}_ytrue.csv', 'w') as f_ytrue:
+        with open(f'{args.csv_prefix}_ytrue.csv', mode='w', encoding='utf-8') as f_ytrue:
             f_ytrue.write('truth\n')
-        with open(f'{args.csv_prefix}_ypred.csv', 'w') as f_ypred:
+        with open(f'{args.csv_prefix}_ypred.csv', mode='w', encoding='utf-8') as f_ypred:
             f_ypred.write(','.join(args.labels) + '\n')
-        with open(f'{args.csv_prefix}_x.csv', 'w') as f_x:
+        with open(f'{args.csv_prefix}_x.csv', mode='w', encoding='utf-8') as f_x:
             for i in range(args.dimensions[0]-1):
                 f_x.write(f'x_{i}_mean,')
             f_x.write(f'x_{args.dimensions[0]-1}_mean\n')
@@ -1065,23 +1046,11 @@ def _validate(data_loader, model, criterion, loggers, args, epoch=-1, tflogger=N
     end = time.time()
     class_probs = []
     class_preds = []
-    for validation_step, (inputs, target, bb) in enumerate(data_loader):
+    for validation_step, (inputs, target) in enumerate(data_loader):
         with torch.no_grad():
-            inputs, target, bb = inputs.to(args.device), target.to(args.device), bb.to(args.device)
+            inputs, target = inputs.to(args.device), target.to(args.device)
             # compute output from model
             output = model(inputs)
-            
-            #loss = iou(output,target,bb,quant_eval=True)
-            
-            # target = torch.cat((bb,target.resize(target.size(0),1)),dim=1)
-            # c,_ = torch.max(output[:,0:6],dim=1)
-            # c = c.resize(c.size(0),1)
-            # output = torch.cat((output[:,6:10],c),dim=1)
-            # target = bb
-            # #c,_ = torch.max(output[:,0:6],dim=1)
-            # #c = c.resize(c.size(0),1)
-            # #output = torch.cat((output[:,6:10],c),dim=1)
-            # output = (output[:,6:10])
             # correct output for accurate loss calculation
             if args.act_mode_8bit:
                 output /= 128.
@@ -1102,14 +1071,10 @@ def _validate(data_loader, model, criterion, loggers, args, epoch=-1, tflogger=N
             if not args.earlyexit_thresholds:
                 # compute loss
                 #loss = criterion(output, target)
-                
-                loss = iou(output,target,bb,quant_eval=True)
-                # target = torch.cat((bb,target.resize(target.size(0),1)),dim=1)
-                # c,_ = torch.max(output[:,0:6],dim=1)
-                # c = c.resize(c.size(0),1)
-                # output = torch.cat((output[:,6:10],c),dim=1)
+                loss = triplet_loss(output, target)
                 # measure accuracy and record loss
                 losses['objective_loss'].add(loss.item())
+                
                 if len(output.data.shape) <= 2:
                     #classerr.add(output.data, target)
                     classerr.add(loss.item())
@@ -1120,9 +1085,7 @@ def _validate(data_loader, model, criterion, loggers, args, epoch=-1, tflogger=N
                     confusion.add(output.data, target)
             else:
                 earlyexit_validate_loss(output, target, criterion, args)
-            
-            
-            #output = (output[:,6:10])
+
             # measure elapsed time
             batch_time.add(time.time() - end)
             end = time.time()
@@ -1320,7 +1283,9 @@ def earlyexit_validate_loss(output, target, _criterion, args):
 
     for exitnum in range(args.num_exits):
         # calculate losses at each sample separately in the minibatch.
-        args.loss_exits[exitnum] = earlyexit_validate_criterion(output[exitnum], target)
+        args.loss_exits[exitnum] = earlyexit_validate_criterion(  # pylint: disable=not-callable
+            output[exitnum], target
+        )
         # for batch_size > 1, we need to reduce this down to an average over the batch
         args.losses_exits[exitnum].add(torch.mean(args.loss_exits[exitnum]).cpu())
 
@@ -1331,7 +1296,7 @@ def earlyexit_validate_loss(output, target, _criterion, args):
             if args.loss_exits[exitnum][batch_index] < args.earlyexit_thresholds[exitnum]:
                 # take the results from early exit since lower than threshold
                 args.exiterrors[exitnum].add(
-                    torch.tensor(  # pylint: disable=not-callable
+                    torch.Tensor(
                         np.array(output[exitnum].data[batch_index].cpu(), ndmin=2)
                     ),
                     torch.full([1], target[batch_index], dtype=torch.long))
@@ -1342,7 +1307,7 @@ def earlyexit_validate_loss(output, target, _criterion, args):
         if not earlyexit_taken:
             exitnum = args.num_exits - 1
             args.exiterrors[exitnum].add(
-                torch.tensor(  # pylint: disable=not-callable
+                torch.Tensor(
                     np.array(output[exitnum].data[batch_index].cpu(), ndmin=2)
                 ),
                 torch.full([1], target[batch_index], dtype=torch.long))
