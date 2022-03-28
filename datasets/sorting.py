@@ -171,14 +171,14 @@ def sorting_get_datasets(data, load_train=True, load_test=True):
     (data_dir, args) = data
     
     #img_dir_path = "/home/geffen/Desktop/sorting_dataset/sorting_imgs/"
-    img_dir_path = "/home/geffen/Desktop/latest_sorting_imgs/sorting_imgs"
+    img_dir_path = "/home/geffen_cooper/sorting_imgs"
 
     if load_train:
         train_transform = transforms.Compose([
             transforms.ToPILImage(),
-            transforms.ColorJitter(brightness=(0.95,1.05)),#,saturation=(0.5,1),contrast=(0.7,1.1)),
-            #transforms.RandomGrayscale(0.05),
-            transforms.RandomAffine(degrees=0,translate=(0.05,0.05)),
+            transforms.ColorJitter(brightness=(0.85,1.15),saturation=(0.85,1.15),contrast=(0.85,1.15)),
+            transforms.RandomGrayscale(0.1),
+            transforms.RandomAffine(degrees=5,translate=(0.05,0.05)),
             transforms.RandomHorizontalFlip(),
             transforms.RandomVerticalFlip(),
             transforms.ToTensor(),
