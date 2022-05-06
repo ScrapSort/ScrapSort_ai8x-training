@@ -132,6 +132,7 @@ weight_stddev = None
 weight_mean = None
 
 
+# define the triplet loss here
 def triplet_loss(outputs, class_labels):
     
     #print("\noutput\n\n",outputs[0],"\n=================================\n\n")
@@ -151,12 +152,12 @@ def triplet_loss(outputs, class_labels):
     #print("\nemb\n\n",embeddings[0],"\n=================\n\n")
     
     # generate the triplets
-    num_triplets = 256
+    num_triplets = 512
 
     # triplet tensors for this batch
-    anchors = torch.zeros((num_triplets,1,64))
-    positives = torch.zeros((num_triplets,1,64))
-    negatives = torch.zeros((num_triplets,1,64))
+    anchors = torch.zeros((num_triplets,1,128))
+    positives = torch.zeros((num_triplets,1,128))
+    negatives = torch.zeros((num_triplets,1,128))
 
     # fill the tensors
     #print("gen trips")
@@ -182,7 +183,21 @@ def triplet_loss(outputs, class_labels):
         negatives[i] = embeddings[n_class_idx][negative_idx]
         
     #print(anchors,positives,negatives)
-    TL = torch.nn.TripletMarginLoss(margin=1,p=2)
+    TL = torch.nn.TripletMarginLoss(margin=2,p=2)
+    # print("C0",embeddings[0])
+    # print("C1",embeddings[1])
+    # print("C2",embeddings[2])
+    # print("C3",embeddings[3])
+    # print("C4",embeddings[4])
+    # print("C5",embeddings[5])
+    # print("C6",embeddings[6])
+    # print("\n\n\nanch---------------------------\n\n\n")
+    # print(anchors)
+    # print("\n\n\npos---------------------------\n\n\n")
+    # print(positives)
+    # print("\n\n\nneg---------------------------\n\n\n")
+    # print(negatives)
+    # exit()
     l = TL(anchors,positives,negatives)
     #print("loss\n",l)
     return l
@@ -305,6 +320,7 @@ def main():
         args.losses_exits = []
         args.exiterrors = []
 
+    # get the dataset info from the bottom of the file data structure
     selected_source = next((item for item in supported_sources if item['name'] == args.dataset))
     args.labels = selected_source['output']
     args.num_classes = len(args.labels)
@@ -1040,8 +1056,8 @@ def _validate(data_loader, model, criterion, loggers, args, epoch=-1, tflogger=N
 
     # Switch to evaluation mode
     model.eval()
-    data_loader.dataset.viz_emb(model,args.device)
-    exit()
+    #data_loader.dataset.viz_emb(model,args.device)
+    #exit()
 
     end = time.time()
     class_probs = []
@@ -1653,7 +1669,7 @@ def update_old_model_params(model_path, model_new):
 
 if __name__ == '__main__':
     try:
-        check_pytorch_version()
+        check_pytorch_version() # defined in this file, exits if don't have min pytorch version
         np.set_printoptions(threshold=np.inf, linewidth=190)
         torch.set_printoptions(threshold=np.inf, linewidth=190)
 

@@ -23,7 +23,7 @@
 #
 
 """
-Sorting Datasets
+Datasets for sorting images
 """
 
 import numpy as np
@@ -36,17 +36,11 @@ from PIL import Image
 import torch
 import pandas as pd
 import os
-
-import ai8x
-#from models.sortingnet import SortingClassifier128
-
-import matplotlib.pyplot as plt
-import numpy as np
-import torch
 from matplotlib import cm
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
-from torch.utils.data import DataLoader
+
+import ai8x
 
 
 '''
@@ -74,24 +68,36 @@ class SortingDataset(Dataset):
         self.classes = {img_classes[i] : i for i in range(0, len(img_classes))}
         print(self.classes)
         
-        # get all training samples/labels by getting paths of the images in each subfolder folder
-        self.imgs = []
-        self.labels = []
-        i = 0
+        # get all training samples/labels by getting absolute paths of the images in each subfolder
+        self.imgs = [] # absolute img paths (all images)
+        self.labels = [] # integer labels (all labels in corresponding order)
+
+        i = 0 # index into dataset lists
+
+        # iterate through the dataset directory tree
         for idx, path_obj in enumerate(os.walk(img_dir_path)):
-            if idx > 0: # we don't want the files in the top folder
-                for file in path_obj[2]: # path_obj[2] is list of files in the subdirectory
+            # each execution of this inner loop is for each subdirectory
+            if idx > 0: # don't include files in the top folder (subfolders are in the next itertion, idx > 0)
+                for file in path_obj[2]: # path_obj[2] is list of files in the object class subdirectories
                     self.imgs.append(os.path.abspath(os.path.join(path_obj[0],file))) # want absolute path
-                    self.labels.append(self.classes[os.path.basename(os.path.dirname(self.imgs[i]))]) # get the label from the directory name
+                    self.labels.append(self.classes[os.path.basename(os.path.dirname(self.imgs[i]))]) # get label from directory name
                     i+=1
-                    
+
+    # since the image are in RGB565 we need a special function to read them into RGB888             
     def read_img(self,img_path):
+
+        # width, height, channel
         w = 128
         h = 128
         c = 3
+
+        # images are 8 bits per channel
         img = np.zeros((w,h,c),dtype=np.uint8)
         img_file = open(img_path,"rb")
         
+        # each RGB565 pixel is two bytes
+        #            High byte    Low byte
+        # RGB565 --> RRRRRGGG     GGGBBBBB
         pixel_h = img_file.read(1)
         pixel_l = img_file.read(1)
 
@@ -112,17 +118,19 @@ class SortingDataset(Dataset):
             img[y,x,2] = (b<<3)
             idx += 1
             
+            # try to read the next pixel
             pixel_h = img_file.read(1)
             pixel_l = img_file.read(1)
             
-        return img#torch.from_numpy(img)
+        return img
 
-    
+    # dataset size is number of images
     def __len__(self):
         return len(self.imgs)
     
+    # how to get one sample from the dataset
     def __getitem__(self, idx):
-        # load the image
+        # attempt to load the image at the specified index
         try:
             img = self.read_img(self.imgs[idx])
             
@@ -139,19 +147,22 @@ class SortingDataset(Dataset):
             
             # return the sample (img (tensor)), object class (int)
             return img, label
+
+        # if the image is invalid, show the exception
         except (ValueError, RuntimeWarning,UserWarning) as e:
             print("Exception: ", e)
             print("Bad Image: ", self.imgs[idx])
             exit()
     
-    # Displays a random batch of 64 samples
+    # Diaply the results of a forward pass for a random batch of 64 samples
     def visualize_batch(self,model):
         import matplotlib
         matplotlib.use('TkAgg')
+
         batch_size = 64
         data_loader = DataLoader(self,batch_size,shuffle=True)
+
         # get the first batch
-        (imgs, labels) = next(iter(data_loader))
         (imgs, labels) = next(iter(data_loader))
         preds = model(imgs)
         
@@ -166,17 +177,29 @@ class SortingDataset(Dataset):
             for j in range(cols):
                 idx = i*rows+j
                 text = str(labels[idx].item()) + ":" + obj_classes[labels[idx]]  + "P: ",obj_classes[preds[idx].argmax()]#", i=" +str(idxs[idx].item())
+                
+                # for normal forward pass use this line
                 #ax_array[i,j].imshow(imgs[idx].permute(1, 2, 0))
+
+                # for quantized forward pass use this line
                 ax_array[i,j].imshow((imgs[idx].permute(1, 2, 0)+128)/255)
+
                 ax_array[i,j].title.set_text(text)
                 ax_array[i,j].set_xticks([])
                 ax_array[i,j].set_yticks([])
         plt.show()
 
+    
+    # visualize high dimensional embedding using T-SNE
     def viz_emb(self, model,device):
+        import matplotlib
+        matplotlib.use('TkAgg')
+
         output_emb = torch.zeros((0,64))
         labels = []
         data_loader = DataLoader(self,128,shuffle=True)
+
+        # iterate through the validation set
         for validation_step, (inputs, target) in enumerate(data_loader):
             with torch.no_grad():
                 inputs, target = inputs.to(device), target.to(device)
@@ -198,14 +221,18 @@ class SortingDataset(Dataset):
         ax.legend(fontsize='large', markerscale=2)
         plt.savefig("viz.pdf")
         
-        
+
+
+
 '''Function to get the datasets'''
 def sorting_get_datasets(data, load_train=True, load_test=True):
     (data_dir, args) = data
     
+    # location of images, depends on machine
     #img_dir_path = "/home/geffen/Desktop/sorting_dataset/sorting_imgs/"
-    img_dir_path = "/home/geffen_cooper/sorting_imgs"
+    img_dir_path = "/home/geffen_cooper/ScrapSort/Recycling/recycling_dataset"
 
+    # transforms for training
     if load_train:
         train_transform = transforms.Compose([
             transforms.ToPILImage(),
@@ -221,6 +248,7 @@ def sorting_get_datasets(data, load_train=True, load_test=True):
     else:
         train_dataset = None
 
+    # transforms for test, validatio --> convert to a valid tensor
     if load_test:
         test_transform = transforms.Compose([
             transforms.ToPILImage(),
@@ -238,10 +266,24 @@ def sorting_get_datasets(data, load_train=True, load_test=True):
     return train_dataset, test_dataset
 
 
- #----------------------
- 
- #----------------------
- 
+ #---------------------------------------------------------------------------------------------------------
+
+'''
+Sorting Dataset Class for bounding boxes
+Parameters:
+  img_dir_path - Full path to directory with the images for this dataset.
+                 This assumes that the subdirectories contain each class, 
+                 only images are in these subdirectories, and that the
+                 subdirectory basenames are the desired name of the object class.
+                 i.e. dog/dog1.png, cat/cat1.png, etc.
+
+  transform -    Specifies the image format (size, RGB, etc.) and augmentations to use
+  normalize -    Specifies whether to make the image zero mean, unit variance
+
+CSV:
+  In the top level directory, include the CSVs with the bounding boxes for each class.
+  Use the naming convention Class.csv. Also use this format "filename,x,y,w,h".
+'''
 class SortingDatasetBB(Dataset):
     def __init__(self,img_dir_path,transform,normalize):
         self.img_dir_path = img_dir_path
@@ -255,24 +297,34 @@ class SortingDatasetBB(Dataset):
         self.classes = {img_classes[i] : i for i in range(0, len(img_classes))}
         print(self.classes)
         
-        # get all training samples/labels by getting paths of the images in each subfolder folder
-        self.imgs = []
-        self.labels = []
-        i = 0
+        # get all training samples/labels by getting absolute paths of the images in each subfolder
+        self.imgs = [] # absolute img paths (all images)
+        self.labels = [] # integer labels (all labels in corresponding order)
+
+        i = 0 # index into dataset lists
+
+        # iterate through the dataset directory tree
         for idx, path_obj in enumerate(os.walk(img_dir_path)):
-            if idx > 0: # we don't want the files in the top folder
-                for file in path_obj[2]: # path_obj[2] is list of files in the subdirectory
+            # each execution of this inner loop is for each subdirectory
+            if idx > 0: # don't include files in the top folder (subfolders are in the next itertion, idx > 0)
+                for file in path_obj[2]: # path_obj[2] is list of files in the object class subdirectories
                     self.imgs.append(os.path.abspath(os.path.join(path_obj[0],file))) # want absolute path
-                    self.labels.append(self.classes[os.path.basename(os.path.dirname(self.imgs[i]))]) # get the label from the directory name
+                    self.labels.append(self.classes[os.path.basename(os.path.dirname(self.imgs[i]))]) # get label from directory name
                     i+=1
                     
     def read_img(self,img_path):
+        # width, height, channel
         w = 128
         h = 128
         c = 3
+
+        # images are 8 bits per channel
         img = np.zeros((w,h,c),dtype=np.uint8)
         img_file = open(img_path,"rb")
         
+        # each RGB565 pixel is two bytes
+        #            High byte    Low byte
+        # RGB565 --> RRRRRGGG     GGGBBBBB
         pixel_h = img_file.read(1)
         pixel_l = img_file.read(1)
 
@@ -293,19 +345,25 @@ class SortingDatasetBB(Dataset):
             img[y,x,2] = (b<<3)
             idx += 1
             
+            # try to read the next pixel
             pixel_h = img_file.read(1)
             pixel_l = img_file.read(1)
             
-        return img#torch.from_numpy(img)
+        return img
 
     
+     # dataset size is number of images
     def __len__(self):
         return len(self.imgs)
     
+    # how to get one sample from the dataset
     def __getitem__(self, idx):
-        # load the image
+        # attempt to load the image at the specified index
         try:
+            # read the image
             img = self.read_img(self.imgs[idx])
+
+            # get the file name based on the idx, append .png because pngs were used for drawing the bounding box
             file_name = os.path.basename(self.imgs[idx])+".png"
             
             # apply any transformation
@@ -320,11 +378,16 @@ class SortingDatasetBB(Dataset):
             label = self.labels[idx]
             
             # if class is 'none' then bb doesn't matter
-            if label == 5:
-                return img, label,torch.tensor([0.01,0.01,0.01,0.01]).float()
+            if label == 3:
+                return img,label,torch.tensor([0.01,0.01,0.01,0.01]).float()
             
+            # read the csv as a pandas dataframe
             df = pd.read_csv(os.path.dirname(self.img_dir_path) + "/" + list(self.classes)[label]+".csv")
+            
+            # grab the row based on the file name
             row = df.loc[df['filename'] == file_name]
+
+            # extract the vounding box values as a tensor
             bb = [row['x'].item(),row['y'].item(),row['w'].item(),row['h'].item()]
             bb = torch.tensor(bb).float()
             
@@ -345,13 +408,10 @@ class SortingDatasetBB(Dataset):
         
         # get the first batch
         (imgs, labels, bbs) = next(iter(data_loader))
-        (imgs, labels, bbs) = next(iter(data_loader))
-        (imgs, labels, bbs) = next(iter(data_loader))
-        #(imgs, labels, bbs) = next(iter(data_loader))
         
         # batch output
         predictions = model(imgs)
-        none_idxs = (labels == 5).nonzero()
+        none_idxs = (labels == 3).nonzero()
         bbs[none_idxs] = 1.
         div = (predictions[:,6:10].detach()/bbs)
         #print(div.mean(dim=0))
@@ -403,7 +463,8 @@ class SortingDatasetBB(Dataset):
 def sorting_get_datasetsbb(data, load_train=True, load_test=True):
     (data_dir, args) = data
     
-    img_dir_path = "/home/geffen/Desktop/sorting_imgs_all/"
+    #img_dir_path = "/home/geffen/Desktop/sorting_imgs_all/"
+    img_dir_path = "/home/geffen_cooper/ScrapSort/sorting_imgs_all/"
 
     if load_train:
         train_transform = transforms.Compose([
@@ -439,13 +500,13 @@ datasets = [
     {
         'name': 'sorting',
         'input': (3, 128, 128),
-        'output': ('cup','trap','hex','can', 'bottle','none'),
+        'output': ('Paper','Metal','Plastic','Other', 'None'),
         'loader': sorting_get_datasets,
     },
     {
         'name': 'sortingbb',
         'input': (3, 128, 128),
-        'output': ('cup','hex','Trap','can','bottle','none'),
+        'output': ('cup','hex','Trap','can','bottle','other','none'),
         'loader': sorting_get_datasetsbb,
     }
 ]
