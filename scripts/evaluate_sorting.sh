@@ -1,2 +1,2 @@
 #!/bin/sh
-./train.py --model simplesortingnetbn --dataset sorting --confusion --evaluate --exp-load-weights-from /home/geffen_cooper/ScrapSort/ScrapSort_ai8x-training/simplesort9_qat.pth.tar --device MAX78000 "$@"
+./train.py --model simplesortingnetbncd --dataset sortingssd --confusion --evaluate --exp-load-weights-from /home/geffen_cooper/ScrapSort/ScrapSort_ai8x-training/recycle_qat_1k-q.pth.tar -8 --device MAX78000 "$@"

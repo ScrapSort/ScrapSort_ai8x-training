@@ -137,8 +137,17 @@ weight_mean = None
 def iou(outputs, class_labels, bb_label,quant_eval=False):
     #print("labels: ", bb_label.data[0], " pred: ", outputs.data[0][6:10])
     #print(labels.size())
-    class_pred = outputs[:,0:7]
-    bb_pred = outputs[:,7:11]
+    class_pred = outputs[:,0:4]
+    bb_pred = outputs[:,4:8]*10
+
+    if quant_eval:
+        print("\npreds")
+        print(bb_pred[0:4,:])
+        print(class_pred[0:4])
+        print("-----------")
+        print("ground truth")
+        print(bb_label[0:4,:])
+        print(class_labels[0:4])
     
     
     #div = (bb_pred[(class_labels != 5).nonzero()] / (bb_label[(class_labels != 5).nonzero()]+1))
@@ -189,14 +198,14 @@ def iou(outputs, class_labels, bb_label,quant_eval=False):
     # exit()
     
     if quant_eval:
-        print(iou[(class_labels != 3).nonzero()].mean())
+        print(iou[(class_labels != 2).nonzero()].mean())
     #print(bb_pred[(class_labels != 5).nonzero()][0:5,:])
     #print(bb_label[(class_labels != 5).nonzero()][0:5,:])
     l1 = nn.L1Loss()
     l1s = nn.SmoothL1Loss(reduction='none')
     ce = nn.CrossEntropyLoss()
     
-    none_class_idxs = (class_labels == 3).nonzero()
+    none_class_idxs = (class_labels == 2).nonzero()
     
     #bb_l = 1-iou + D + l1(bb_pred,bb_label)
     bb_l = l1s(bb_pred,bb_label)
@@ -548,6 +557,7 @@ def main():
                 create_nas_kd_policy(model, compression_scheduler, start_epoch, kd_end_epoch, args)
 
     vloss = 10**6
+    qat_scale = 1
     for epoch in range(start_epoch, ending_epoch):
         if qat_policy is not None and epoch > 0 and epoch == qat_policy['start_epoch']:
             # Fuse the BN parameters into conv layers before Quantization Aware Training (QAT)
@@ -1059,8 +1069,8 @@ def _validate(data_loader, model, criterion, loggers, args, epoch=-1, tflogger=N
 
     # Switch to evaluation mode
     model.eval()
-    #data_loader.dataset.visualize_batch(model)
-    #exit()
+    # data_loader.dataset.visualize_batch(model)
+    # exit()
 
     end = time.time()
     class_probs = []

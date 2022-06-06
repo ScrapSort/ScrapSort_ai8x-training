@@ -655,6 +655,9 @@ def create_nas_kd_policy(model, compression_scheduler, epoch, next_state_start_e
 
 def train(train_loader, model, criterion, optimizer, epoch,
           compression_scheduler, loggers, args):
+    # model.eval()
+    # train_loader.dataset.visualize_batch(model)
+    # exit()
     """Training loop for one epoch."""
     losses = OrderedDict([(OVERALL_LOSS_KEY, tnt.AverageValueMeter()),
                           (OBJECTIVE_LOSS_KEY, tnt.AverageValueMeter())])
@@ -977,7 +980,7 @@ def _validate(data_loader, model, criterion, loggers, args, epoch=-1, tflogger=N
 
     # Switch to evaluation mode
     model.eval()
-    #data_loader.dataset.visualize_batch(model)
+    # data_loader.dataset.visualize_batch(model)
     #exit()
 
     end = time.time()
@@ -988,6 +991,16 @@ def _validate(data_loader, model, criterion, loggers, args, epoch=-1, tflogger=N
             inputs, target = inputs.to(args.device), target.to(args.device)
             # compute output from model
             output = model(inputs)
+
+            # display wrong outputs
+            pred = output.argmax(dim=1, keepdim=True) # get the idxs of the max output
+            wrong_idx = (pred != target.view_as(pred)).nonzero()[:, 0] # get wrong predictions
+            wrong_samples = inputs[wrong_idx]
+            wrong_preds = pred[wrong_idx]
+            actual_preds = target.view_as(pred)[wrong_idx]
+
+            #data_loader.dataset.viz_mispredict(wrong_samples.cpu(),wrong_preds.cpu(),actual_preds.cpu())
+
             # correct output for accurate loss calculation
             if args.act_mode_8bit:
                 output /= 128.

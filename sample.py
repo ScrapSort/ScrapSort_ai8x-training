@@ -11,7 +11,6 @@ Generate a sample for KAT
 """
 import numpy as np
 
-
 def generate(
         index,
         inputs,
@@ -32,7 +31,8 @@ def generate(
     # FIXME: Implement search
 
     print(f'==> Saving sample at index {index} to {sample_name}.npy')
-    x = inputs[index].cpu().numpy().astype('int64')
+    x = inputs[index]*128
+    x = x.cpu().numpy().astype('int64')
     x = np.clip(x, -128, 127)
     np.save(sample_name, x, allow_pickle=False, fix_imports=False)
 

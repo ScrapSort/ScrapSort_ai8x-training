@@ -3,7 +3,7 @@
 # pd.options.mode.chained_assignment = None 
 
 # #df = pd.read_csv("/home/geffen/Desktop/sorting_imgs_all/Bottle.csv")
-# df = pd.read_csv("/home/geffen_cooper/ScrapSort/sorting_imgs_all/Other.csv")
+# df = pd.read_csv("/home/geffen_cooper/ScrapSort/Recycling/recycling_dataset/Other.csv")
 # df = df.drop(['file_size','file_attributes','region_count','region_id','region_attributes'],axis=1)
 # # df = df.sort_values(by=['filename'])
 # #print(df.head)
@@ -23,6 +23,6 @@
 #     df.at[i,'h'] = int(bb[3])
 
 # df = df.drop(['region_shape_attributes'],axis=1)
-# df.to_csv("/home/geffen_cooper/ScrapSort/sorting_imgs_all/Other.csv")
+# df.to_csv("/home/geffen_cooper/ScrapSort/Recycling/recycling_dataset/Other.csv")
 # # b = df.loc[df['filename'] == 'img0535.png']['region_shape_attributes'].to_list()
 # # print(b[0])
